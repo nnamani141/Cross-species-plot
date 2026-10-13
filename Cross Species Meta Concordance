@@ -1,11 +1,8 @@
-# ============================================================================
+
 # CROSS-META COMPARISONS
-#   (1) Spearman correlation of meta log2FC across meta-analyses
-#   (2) Hierarchically clustered heatmap of log2FC
-#   (3) Venn of meta-DEG overlap
-#   (4) GSEA-level: correlation of NES + Venn of significant pathways
-# Uses log2FC (comparable effect size) across all metas, NOT meta_Z.
-# ============================================================================
+
+
+# Uses log2FC (comparable effect size) across all metas
 library(dplyr) 
 library(purrr) 
 library(pheatmap) 
@@ -13,7 +10,7 @@ library(RColorBrewer)
 library(openxlsx)
 library(UpSetR) 
 
-# Load the meta-analysis table into a named list.
+# Load the meta-analysis table into named list.
 
 # Set file path
 fp <- "C:/Users/dnnamani/OneDrive - University of Tennessee/UTHSC/Personal_Ideas/"
@@ -77,12 +74,12 @@ human_metas_DEG <- list(
   F_Fibrosis         = load_meta_DEG(file.path(dfp,"Human_Female_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC")
 )
 
-# Helper: merge a list of metas into a wide log2FC matrix (genes x metas)
+# Merge a list of metas into a wide log2FC matrix (genes x metas)
 merge_logfc <- function(meta_list) {
   reduce(imap(meta_list, ~ .x %>% dplyr::select(gene, !!.y := log2FC)),
          full_join, by = "gene") %>%
-    filter(!is.na(gene), gene != "") %>%       # drop NA / blank gene rows
-    distinct(gene, .keep_all = TRUE) %>%       # guard against duplicate genes
+    filter(!is.na(gene), gene != "") %>%       # drop NA
+    distinct(gene, .keep_all = TRUE) %>%       # handle duplicate genes
     tibble::column_to_rownames("gene") %>%
     as.matrix()
 }
@@ -91,8 +88,8 @@ merge_logfc <- function(meta_list) {
 merge_FDR <- function(meta_list) {
   reduce(imap(meta_list, ~ .x %>% dplyr::select(gene, !!.y := fdr)),
          full_join, by = "gene") %>%
-    filter(!is.na(gene), gene != "") %>%       # drop NA / blank gene rows
-    distinct(gene, .keep_all = TRUE) %>%       # guard against duplicate genes
+    filter(!is.na(gene), gene != "") %>%       # drop NA 
+    distinct(gene, .keep_all = TRUE) %>%       # handle duplicate genes
     tibble::column_to_rownames("gene") %>%
     as.matrix()
 }
@@ -251,21 +248,6 @@ pheatmap(combined_cor,
          cluster_cols = FALSE,
          main = "Cross-species meta concordance (ortholog log2FC, Spearman)")
 
-#FDR
-#combined_cor_fdr <- cor(combined_fdr, use = "pairwise.complete.obs", method = "spearman")
-#pheatmap(combined_cor_fdr, 
- #        color = pal, 
-  #       breaks = seq(-1,1,length.out=101),
-   #      display_numbers = TRUE, 
-    #     number_format="%.2f",
-     #    fontsize_number = 14,
-      #   fontsize_row = 12,            
-       #  fontsize_col = 12,
-        # number_color = "black",
-        # clustering_method = "complete",
-        # cluster_rows = FALSE,
-        # cluster_cols = FALSE,
-        # main = "Cross-species meta concordance (ortholog log2FC, Spearman)")
 
 # pairwise complete-observation counts = the n behind each correlation cell
 n_mat <- crossprod(!is.na(combined))
