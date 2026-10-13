@@ -92,7 +92,7 @@ cc_go2 <- compareCluster(
 dp <- dotplot(cc_go, showCategory = 8) 
 # Adjust font sizes across different text elements
 dp + theme(
-  # Shrink pathway terms on the Y-axis (e.g., set to size 8 or 9)
+  # Shrink pathway terms on the Y-axis 
   axis.text.y = element_text(size = 10),
 )
 
@@ -100,7 +100,7 @@ dotplot(cc_go1, showCategory = 8)
 dpc <- dotplot(cc_go2, showCategory = 8) 
 # Adjust font sizes across different text elements
 dpc + theme(
-  # Shrink pathway terms on the Y-axis (e.g., set to size 8 or 9)
+  # Shrink pathway terms on the Y-axis 
   axis.text.y = element_text(size = 10),
 )
 # get df for the results
