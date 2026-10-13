@@ -1,15 +1,3 @@
-# ==============================================================================
-# HUMAN SIDE: four stages
-#   Steatosis        = MASL (GSE281797) + NAFL (GSE126848)   -> 2-cohort meta
-#   Steatohepatitis  = MASH (GSE281797) + NASH (GSE126848)   -> 2-cohort meta
-#   Obese            = GSE126848 only                        -> single dataset
-#   Fibrosis         = GSE246221 F1/F2/F3-4                  -> single dataset,
-#                                                               severity gradient
-#   Progression      = MASH_vs_MASL + NASH_vs_NAFL           -> 2-cohort meta
-# With k = 2, I2/Cochran's Q are uninformative (df = 1). Reproducibility is
-# defined by cross-cohort directional concordance instead.
-# ==============================================================================
-
 library(dplyr)
 library(openxlsx)
 library(EnhancedVolcano)
@@ -21,7 +9,7 @@ fp  <- "C:/Users/dnnamani/OneDrive - University of Tennessee/UTHSC/Personal_Idea
 dfp <- paste0(fp, "Diabetic_Liver_Data/Meta_analysis/")
 
 # Stage cores for compareCluster (human side)
-# 1. Collect the reproducible-core gene vectors you already saved per tier
+# Collect the reproducible-core gene vectors per tier
 # Male
 MASL        <- read.csv(paste0(dfp, "Tier_MASL_Human_recurrence_core.csv"))[[1]]
 MASH <- read.csv(paste0(dfp, "Tier_MASH_Human_recurrence_core.csv"))[[1]]
