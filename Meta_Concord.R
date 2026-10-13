@@ -1,0 +1,700 @@
+# ============================================================================
+# CROSS-META COMPARISONS
+#   (1) Spearman correlation of meta log2FC across meta-analyses
+#   (2) Hierarchically clustered heatmap of log2FC
+#   (3) Venn of meta-DEG overlap
+#   (4) GSEA-level: correlation of NES + Venn of significant pathways
+# Uses log2FC (comparable effect size) across all metas, NOT meta_Z.
+# ============================================================================
+library(dplyr) 
+library(purrr) 
+library(pheatmap) 
+library(RColorBrewer)
+library(openxlsx)
+library(UpSetR) 
+
+# Load the meta-analysis table into a named list.
+
+# Set file path
+fp <- "C:/Users/dnnamani/OneDrive - University of Tennessee/UTHSC/Personal_Ideas/"
+# get to the data folder
+dfp <- paste0(fp, "Diabetic_Liver_Data/Meta_analysis/")
+
+load_meta <- function(path, sheet = "All_Meta_Analysis_Results",
+                      effect_col) {
+  d <- read.xlsx(path, sheet = sheet)
+  data.frame(gene = d$gene,
+             log2FC = as.numeric(d[[effect_col]]),
+             fdr    = as.numeric(d$meta_FDR),
+             stringsAsFactors = FALSE)
+}
+
+load_meta_DEG <- function(path, sheet = "significant_meta_DEGs",
+                      effect_col) {
+  d <- read.xlsx(path, sheet = sheet)
+  data.frame(gene = d$gene,
+             log2FC = as.numeric(d[[effect_col]]),
+             fdr    = as.numeric(d$meta_FDR),
+             stringsAsFactors = FALSE)
+}
+# MOUSE metas 
+mouse_metas <- list(
+  M_Obesity  = load_meta(file.path(dfp,"Obesity_Highly_Reproducible_Meta_DEGs.xlsx"),  effect_col="pooled_logFC"),
+  F_Obesity  = load_meta(file.path(dfp,"Obesity_Females_Highly_Reproducible_Meta_DEGs.xlsx"), effect_col="pooled_logFC"),
+  Diabetes   = load_meta(file.path(dfp,"Diabetes_Highly_Reproducible_Meta_DEGs.xlsx"),        effect_col="pooled_logFC"),
+  Tier3a     = load_meta(file.path(dfp,"DiabOnObesity_Highly_Reproducible_Meta_DEGs.xlsx"),   effect_col="pooled_logFC"),
+  Tier3b     = load_meta(file.path(dfp,"ObsOnDiabetes_Highly_Reproducible_Meta_DEGs.xlsx"),   effect_col="pooled_logFC")
+)
+
+mouse_metas_DEG <- list(
+  M_Obesity  = load_meta_DEG(file.path(dfp,"Obesity_Highly_Reproducible_Meta_DEGs.xlsx"),  effect_col="pooled_logFC"),
+  F_Obesity  = load_meta_DEG(file.path(dfp,"Obesity_Females_Highly_Reproducible_Meta_DEGs.xlsx"), effect_col="pooled_logFC"),
+  Diabetes   = load_meta_DEG(file.path(dfp,"Diabetes_Highly_Reproducible_Meta_DEGs.xlsx"),        effect_col="pooled_logFC"),
+  Tier3a     = load_meta_DEG(file.path(dfp,"DiabOnObesity_Highly_Reproducible_Meta_DEGs.xlsx"),   effect_col="pooled_logFC"),
+  Tier3b     = load_meta_DEG(file.path(dfp,"ObsOnDiabetes_Highly_Reproducible_Meta_DEGs.xlsx"),   effect_col="pooled_logFC")
+)
+
+# HUMAN metas
+human_metas <- list(
+  M_Steatosis        = load_meta(file.path(dfp,"Human_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        effect_col="pooled_logFC"),
+  M_Steatohepatitis  = load_meta(file.path(dfp,"Human_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  effect_col="pooled_logFC"),
+  M_Progression      = load_meta(file.path(dfp,"Human_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC"),
+  M_Fibrosis         = load_meta(file.path(dfp,"Human_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC"),
+  F_Steatosis        = load_meta(file.path(dfp,"Human_Female_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        effect_col="pooled_logFC"),
+  F_Steatohepatitis  = load_meta(file.path(dfp,"Human_Female_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  effect_col="pooled_logFC"),
+  F_Progression      = load_meta(file.path(dfp,"Human_Female_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC"),
+  F_Fibrosis         = load_meta(file.path(dfp,"Human_Female_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC")
+)
+
+human_metas_DEG <- list(
+  M_Steatosis        = load_meta_DEG(file.path(dfp,"Human_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        effect_col="pooled_logFC"),
+  M_Steatohepatitis  = load_meta_DEG(file.path(dfp,"Human_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  effect_col="pooled_logFC"),
+  M_Progression      = load_meta_DEG(file.path(dfp,"Human_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC"),
+  M_Fibrosis         = load_meta_DEG(file.path(dfp,"Human_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC"),
+  F_Steatosis        = load_meta_DEG(file.path(dfp,"Human_Female_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        effect_col="pooled_logFC"),
+  F_Steatohepatitis  = load_meta_DEG(file.path(dfp,"Human_Female_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  effect_col="pooled_logFC"),
+  F_Progression      = load_meta_DEG(file.path(dfp,"Human_Female_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC"),
+  F_Fibrosis         = load_meta_DEG(file.path(dfp,"Human_Female_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      effect_col="pooled_logFC")
+)
+
+# Helper: merge a list of metas into a wide log2FC matrix (genes x metas)
+merge_logfc <- function(meta_list) {
+  reduce(imap(meta_list, ~ .x %>% dplyr::select(gene, !!.y := log2FC)),
+         full_join, by = "gene") %>%
+    filter(!is.na(gene), gene != "") %>%       # drop NA / blank gene rows
+    distinct(gene, .keep_all = TRUE) %>%       # guard against duplicate genes
+    tibble::column_to_rownames("gene") %>%
+    as.matrix()
+}
+
+## Create this for FDR
+merge_FDR <- function(meta_list) {
+  reduce(imap(meta_list, ~ .x %>% dplyr::select(gene, !!.y := fdr)),
+         full_join, by = "gene") %>%
+    filter(!is.na(gene), gene != "") %>%       # drop NA / blank gene rows
+    distinct(gene, .keep_all = TRUE) %>%       # guard against duplicate genes
+    tibble::column_to_rownames("gene") %>%
+    as.matrix()
+}
+
+# For FDR
+mouse_mat_fdr <- merge_FDR(mouse_metas)
+human_mat_fdr <- merge_FDR(human_metas)
+
+# WITHIN-SPECIES Spearman correlation of log2FC
+mouse_mat <- merge_logfc(mouse_metas)
+mouse_mat_DEG <- merge_logfc(mouse_metas_DEG)
+human_mat <- merge_logfc(human_metas)
+human_mat_DEG <- merge_logfc(human_metas_DEG)
+
+mouse_cor <- cor(mouse_mat, use = "pairwise.complete.obs", method = "spearman")
+mouse_cor_DEG <- cor(mouse_mat_DEG, use = "pairwise.complete.obs", method = "spearman")
+
+human_cor <- cor(human_mat, use = "pairwise.complete.obs", method = "spearman")
+human_cor_DEG <- cor(human_mat_DEG, use = "pairwise.complete.obs", method = "spearman")
+
+print(round(mouse_cor, 2)); 
+print(round(human_cor, 2))
+print(round(mouse_cor_DEG, 2)); 
+print(round(human_cor_DEG, 2))
+
+
+# Clustered heatmap of log2FC across metas (all within a species)
+pal <- colorRampPalette(rev(brewer.pal(11,"RdBu")))(100)
+pheatmap(mouse_cor_DEG, color = pal, breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         number_format="%.2f",
+         fontsize_number = 16,
+         fontsize_row = 16,            
+         fontsize_col = 16,
+         number_color = "black",
+         clustering_method = "complete",
+         cluster_rows = F,
+         cluster_cols = F,
+         main = "Mouse meta-analyses: log2FC concordance 
+         of meta_DEGs (Spearman)")
+
+# Human meta
+pheatmap(human_cor_DEG, color = pal, breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         number_format="%.2f",
+         fontsize_number = 16,
+         fontsize_row = 16,            
+         fontsize_col = 16,
+         number_color = "black",
+         clustering_method = "complete",
+         cluster_rows = F,
+         cluster_cols = F,
+         main = "Human meta-analyses: log2FC concordance 
+         of meta_DEGs (Spearman)")
+
+pal <- colorRampPalette(rev(brewer.pal(11,"RdBu")))(100)
+pheatmap(mouse_cor, color = pal, breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         number_format="%.2f",
+         fontsize_number = 16,
+         fontsize_row = 16,            
+         fontsize_col = 16,
+         number_color = "black",
+         clustering_method = "complete",
+         cluster_rows = F,
+         cluster_cols = F,
+         main = "Mouse meta-analyses: log2FC concordance (Spearman)")
+
+# Human meta
+pheatmap(human_cor, color = pal, breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         number_format="%.2f",
+         fontsize_number = 16,
+         fontsize_row = 16,            
+         fontsize_col = 16,
+         number_color = "black",
+         clustering_method = "complete",
+         cluster_rows = F,
+         cluster_cols = F,
+         main = "Human meta-analyses: log2FC concordance (Spearman)")
+
+# UpSet of meta-DEG overlap (within species)
+  
+mouse_deg_sets <- lapply(mouse_metas_DEG, \(d) d$gene[d$fdr < 0.05 & is.finite(d$fdr)])
+upset(fromList(mouse_deg_sets), nsets = length(mouse_deg_sets), order.by = "freq")
+
+human_deg_sets <- lapply(human_metas_DEG, \(d) d$gene[d$fdr < 0.05 & is.finite(d$fdr)])
+upset(fromList(human_deg_sets), nsets = length(human_deg_sets), order.by = "freq")
+
+
+# CROSS-SPECIES: map mouse -> human orthologs, then merge on human symbol
+
+Human_HOM <- read.table("Human_Jax_Code.txt", header = FALSE, sep = "") %>%
+rename(
+  MGI_ID            = V1,
+  Mouse_Gene_Symbol = V2,
+  Mouse_Entrez_ID   = V3,
+  HGNC_ID           = V4,
+  Human_Gene_Symbol = V5,
+  Human_Entrez_ID   = V6
+)
+
+
+ortho <- Human_HOM %>%
+  filter(Mouse_Gene_Symbol != "", Human_Gene_Symbol != "") %>%
+  distinct(Mouse_Gene_Symbol, Human_Gene_Symbol) %>%
+  # enforce 1:1 by dropping any mouse or human symbol that maps more than once
+  group_by(Mouse_Gene_Symbol) %>% filter(n() == 1) %>% ungroup() %>%
+  group_by(Human_Gene_Symbol) %>% filter(n() == 1) %>% ungroup() %>%
+  transmute(mouse = Mouse_Gene_Symbol, human = Human_Gene_Symbol)
+
+cat("1:1 orthologs:", nrow(ortho), "\n")   
+
+# relabel mouse matrix rows to human symbols via 1:1 orthologs
+
+# genome-wide
+mouse_h <- mouse_mat[rownames(mouse_mat) %in% ortho$mouse, , drop=FALSE]
+rownames(mouse_h) <- ortho$human[match(rownames(mouse_h), ortho$mouse)]
+length(intersect(rownames(mouse_h), rownames(human_mat)))       # final n, genome-wide
+
+# For FDR
+mouse_hum <- mouse_mat_fdr[rownames(mouse_mat_fdr) %in% ortho$mouse, , drop=FALSE]
+rownames(mouse_hum) <- ortho$human[match(rownames(mouse_hum), ortho$mouse)]
+length(intersect(rownames(mouse_hum), rownames(human_mat_fdr)))       # final n, genome-wide
+
+
+# DEG
+mouse_hD <- mouse_mat_DEG[rownames(mouse_mat_DEG) %in% ortho$mouse, , drop=FALSE]
+rownames(mouse_hD) <- ortho$human[match(rownames(mouse_hD), ortho$mouse)]
+length(intersect(rownames(mouse_hD), rownames(human_mat_DEG)))  # final n, DEG-restricted
+
+
+# combined matrix: mouse (ortholog-mapped) + human, columns tagged by species/sex/tier
+# Genome wide
+common_genes <- intersect(rownames(mouse_h), rownames(human_mat))
+combined <- cbind(mouse_h[common_genes, ], human_mat[common_genes, ])
+
+# FDR
+common_genes_fdr <- intersect(rownames(mouse_hum), rownames(human_mat_fdr))
+combined_fdr <- cbind(mouse_hum[common_genes_fdr, ], human_mat_fdr[common_genes_fdr, ])
+
+
+# clustered heatmap: does it sort by species / sex / tier?
+combined_cor <- cor(combined, use = "pairwise.complete.obs", method = "spearman")
+pheatmap(combined_cor, 
+         color = pal, 
+         breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         number_format="%.2f",
+         fontsize_number = 14,
+         fontsize_row = 12,            
+         fontsize_col = 12,
+         number_color = "black",
+         clustering_method = "complete",
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         main = "Cross-species meta concordance (ortholog log2FC, Spearman)")
+
+#FDR
+#combined_cor_fdr <- cor(combined_fdr, use = "pairwise.complete.obs", method = "spearman")
+#pheatmap(combined_cor_fdr, 
+ #        color = pal, 
+  #       breaks = seq(-1,1,length.out=101),
+   #      display_numbers = TRUE, 
+    #     number_format="%.2f",
+     #    fontsize_number = 14,
+      #   fontsize_row = 12,            
+       #  fontsize_col = 12,
+        # number_color = "black",
+        # clustering_method = "complete",
+        # cluster_rows = FALSE,
+        # cluster_cols = FALSE,
+        # main = "Cross-species meta concordance (ortholog log2FC, Spearman)")
+
+# pairwise complete-observation counts = the n behind each correlation cell
+n_mat <- crossprod(!is.na(combined))
+print(n_mat)
+
+# DEG
+common_genes_DEG <- intersect(rownames(mouse_hD), rownames(human_mat_DEG))
+combined_DEG <- cbind(mouse_hD[common_genes_DEG, ], human_mat_DEG[common_genes_DEG, ])
+
+# clustered heatmap: does it sort by species / sex / tier?
+combined_cor_DEG <- cor(combined_DEG, use = "pairwise.complete.obs", method = "spearman")
+pheatmap(combined_cor_DEG, 
+         color = pal, 
+         breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         number_format="%.2f",
+         fontsize_number = 14,
+         fontsize_row = 12,            
+         fontsize_col = 12,
+         number_color = "black",
+         clustering_method = "complete",
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         main = "Cross-species meta concordance of 
+         meta_DEGs (ortholog log2FC, Spearman)")
+
+# pairwise complete-observation counts = the n behind each correlation cell
+n_mat_DEG <- crossprod(!is.na(combined_DEG))
+print(n_mat_DEG)
+
+
+## Cross species Heatmap of the top 25 genes 
+complete <- combined[stats::complete.cases(combined), , drop = FALSE]
+cat("genes with full coverage:", nrow(complete), "\n")
+
+v <- apply(complete, 1, var, na.rm = TRUE)
+top25 <- names(sort(v, decreasing = TRUE))[1:25]
+mat <- complete[top25, , drop = FALSE]
+
+
+# symmetric colour cap so direction reads cleanly
+lim <- quantile(abs(mat), 0.98, na.rm = TRUE)
+mat <- pmax(pmin(mat, lim), -lim)
+
+# column annotation: species and sex
+ann_col <- data.frame(
+  Species = ifelse(grepl("Steatosis|Steatohepatitis|Progression|Fibrosis",
+                         colnames(mat)), "Human", "Mouse"),
+  Sex     = ifelse(grepl("^F_", colnames(mat)), "Female", "Male"),
+  row.names = colnames(mat)
+)
+
+pheatmap(mat,
+         color = pal, 
+         breaks = seq(-lim, lim, length.out = 101),
+         annotation_col = ann_col,
+         cluster_rows = F, 
+         cluster_cols = F,
+         clustering_method = "complete",
+         show_rownames = TRUE, 
+         show_colnames = TRUE,
+         treeheight_row = 20, 
+         treeheight_col = 25,
+         fontsize_row = 12, 
+         fontsize_col = 12,
+         na_col = "grey90",
+         main = "Cross-species Heatmap of Top 25 
+         genes across metas (ortholog log2FC)")
+
+
+############### FDR #######################################
+## Cross-species heatmap of top 25 genes, by -log10(meta_FDR)
+complete <- combined_fdr[stats::complete.cases(combined_fdr), , drop = FALSE]
+cat("genes with full coverage:", nrow(complete), "\n")
+
+# transform to significance BEFORE ranking: bigger = more significant
+neglog <- -log10(complete)
+neglog[!is.finite(neglog)] <- NA  
+
+v <- apply(neglog, 1, var, na.rm = TRUE)
+top25 <- names(sort(v, decreasing = TRUE))[1:25]
+mat <- complete[top25, , drop = FALSE]
+
+# one-sided ceiling so one tiny FDR doesn't dominate; NO negative breaks
+hi  <- quantile(mat, 0.98, na.rm = TRUE)
+mat[mat > hi] <- hi
+
+pal_fdr <- colorRampPalette(RColorBrewer::brewer.pal(9, "Reds"))(100)  # sequential
+
+ann_col <- data.frame(
+  Species = ifelse(grepl("Steatosis|Steatohepatitis|Progression|Fibrosis",
+                         colnames(mat)), "Human", "Mouse"),
+  Sex     = ifelse(grepl("^F_", colnames(mat)), "Female", "Male"),
+  row.names = colnames(mat)
+)
+
+
+pheatmap(mat,
+         color = pal_fdr, 
+         breaks = seq(0, hi, length.out = 101),   # starts at 0, not -lim
+         annotation_col = ann_col,
+         cluster_rows = FALSE, 
+         cluster_cols = FALSE,
+         show_rownames = TRUE, 
+         show_colnames = TRUE,
+         fontsize_row = 12, 
+         fontsize_col = 12,
+         na_col = "grey90",
+         main = "Cross-species Top 25 genes:\n-log10(meta_FDR) across metas")
+
+
+
+
+
+
+# GSEA-level comparison: join by pathway, correlate NES
+
+# Load the meta-analysis table into a named list.
+
+# gsea_results: named list of gseKEGG/gseGO result data.frames, one per meta.
+# each has: ID, Description, NES, p.adjust
+# BP
+load_gsea_BP <- function(path, sheet = "GSEA_GO_BP", nes_col = "NES") {
+  d <- read.xlsx(path, sheet = sheet)
+  data.frame(ID = d$ID,
+             NES = as.numeric(d[[nes_col]]),
+             fdr    = as.numeric(d$p.adjust),
+             stringsAsFactors = FALSE)
+}
+## Cross species Heatmap of the top 25 genes 
+complete <- combined_fdr[stats::complete.cases(combined_fdr), , drop = FALSE]
+cat("genes with full coverage:", nrow(complete), "\n")
+
+v <- apply(complete, 1, var, na.rm = TRUE)
+top25 <- names(sort(v, decreasing = TRUE))[1:25]
+mat <- complete[top25, , drop = FALSE]
+
+
+# symmetric colour cap so direction reads cleanly
+lim <- quantile(abs(mat), 0.98, na.rm = TRUE)
+mat <- pmax(pmin(mat, lim), -lim)
+
+# column annotation: species and sex
+ann_col <- data.frame(
+  Species = ifelse(grepl("Steatosis|Steatohepatitis|Progression|Fibrosis",
+                         colnames(mat)), "Human", "Mouse"),
+  Sex     = ifelse(grepl("^F_", colnames(mat)), "Female", "Male"),
+  row.names = colnames(mat)
+)
+
+pheatmap(mat,
+         color = pal, 
+         breaks = seq(-lim, lim, length.out = 101),
+         annotation_col = ann_col,
+         cluster_rows = F, 
+         cluster_cols = F,
+         clustering_method = "complete",
+         show_rownames = TRUE, 
+         show_colnames = TRUE,
+         treeheight_row = 20, 
+         treeheight_col = 25,
+         fontsize_row = 12, 
+         fontsize_col = 12,
+         na_col = "grey90",
+         main = "Cross-species Heatmap of Top 25 
+         genes across metas (meta_FDR)")# CC
+load_gsea_CC <- function(path, sheet = "GSEA_GO_CC", nes_col = "NES") {
+  d <- read.xlsx(path, sheet = sheet)
+  data.frame(ID = d$ID,
+             NES = as.numeric(d[[nes_col]]),
+             fdr    = as.numeric(d$p.adjust),
+             stringsAsFactors = FALSE)
+}
+# MF
+load_gsea_MF <- function(path, sheet = "GSEA_GO_MF", nes_col = "NES") {
+  d <- read.xlsx(path, sheet = sheet)
+  data.frame(ID = d$ID,
+             NES = as.numeric(d[[nes_col]]),
+             fdr    = as.numeric(d$p.adjust),
+             stringsAsFactors = FALSE)
+}
+
+# For the KEGG I removed the first 3 letter (mmu/hsa)
+
+load_gsea_K <- function(path, sheet = "GSEA_KEGG", nes_col = "NES") {
+  sheets <- getSheetNames(path)
+  if (!sheet %in% sheets) return(data.frame(ID=character(), NES=numeric(), fdr=numeric()))
+  d <- read.xlsx(path, sheet = sheet)
+  data.frame(ID  = sub("^[a-z]{3}", "", d$ID),      # mmu03010 / hsa03010 
+             NES = as.numeric(d[[nes_col]]),
+             fdr = as.numeric(d$p.adjust),
+             stringsAsFactors = FALSE)
+}
+
+# MOUSE metas 
+# BP
+mouse_gsea_BP <- list(
+  M_Obesity  = load_gsea_BP(file.path(dfp,"Obesity_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  F_Obesity  = load_gsea_BP(file.path(dfp,"Obesity_Females_Highly_Reproducible_Meta_DEGs.xlsx"), nes_col="NES"),
+  Diabetes   = load_gsea_BP(file.path(dfp,"Diabetes_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  Tier3a     = load_gsea_BP(file.path(dfp,"DiabOnObesity_Highly_Reproducible_Meta_DEGs.xlsx"),   nes_col="NES"),
+  Tier3b     = load_gsea_BP(file.path(dfp,"ObsOnDiabetes_Highly_Reproducible_Meta_DEGs.xlsx"),   nes_col="NES")
+)
+
+# CC
+mouse_gsea_CC <- list(
+  M_Obesity  = load_gsea_CC(file.path(dfp,"Obesity_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  F_Obesity  = load_gsea_CC(file.path(dfp,"Obesity_Females_Highly_Reproducible_Meta_DEGs.xlsx"), nes_col="NES"),
+  Diabetes   = load_gsea_CC(file.path(dfp,"Diabetes_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  Tier3a     = load_gsea_CC(file.path(dfp,"DiabOnObesity_Highly_Reproducible_Meta_DEGs.xlsx"),   nes_col="NES"),
+  Tier3b     = load_gsea_CC(file.path(dfp,"ObsOnDiabetes_Highly_Reproducible_Meta_DEGs.xlsx"),   nes_col="NES")
+)
+
+# MF
+mouse_gsea_MF <- list(
+  M_Obesity  = load_gsea_MF(file.path(dfp,"Obesity_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  F_Obesity  = load_gsea_MF(file.path(dfp,"Obesity_Females_Highly_Reproducible_Meta_DEGs.xlsx"), nes_col="NES"),
+  Diabetes   = load_gsea_MF(file.path(dfp,"Diabetes_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  Tier3a     = load_gsea_MF(file.path(dfp,"DiabOnObesity_Highly_Reproducible_Meta_DEGs.xlsx"),   nes_col="NES"),
+  Tier3b     = load_gsea_MF(file.path(dfp,"ObsOnDiabetes_Highly_Reproducible_Meta_DEGs.xlsx"),   nes_col="NES")
+)
+
+#KEGG
+mouse_gsea_K <- list(
+  M_Obesity  = load_gsea_K(file.path(dfp,"Obesity_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  F_Obesity  = load_gsea_K(file.path(dfp,"Obesity_Females_Highly_Reproducible_Meta_DEGs.xlsx"), nes_col="NES"),
+  Diabetes   = load_gsea_K(file.path(dfp,"Diabetes_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  Tier3a     = load_gsea_K(file.path(dfp,"DiabOnObesity_Highly_Reproducible_Meta_DEGs.xlsx"),   nes_col="NES"),
+  Tier3b     = load_gsea_K(file.path(dfp,"ObsOnDiabetes_Highly_Reproducible_Meta_DEGs.xlsx"),   nes_col="NES")
+)
+
+# HUMAN metas
+# BP
+human_gsea_BP <- list(
+  M_Steatosis        = load_gsea_BP(file.path(dfp,"Human_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  M_Steatohepatitis  = load_gsea_BP(file.path(dfp,"Human_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  M_Progression      = load_gsea_BP(file.path(dfp,"Human_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  M_Fibrosis         = load_gsea_BP(file.path(dfp,"Human_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  F_Steatosis        = load_gsea_BP(file.path(dfp,"Human_Female_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  F_Steatohepatitis  = load_gsea_BP(file.path(dfp,"Human_Female_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  F_Progression      = load_gsea_BP(file.path(dfp,"Human_Female_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  F_Fibrosis         = load_gsea_BP(file.path(dfp,"Human_Female_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES")
+)
+
+# CC
+human_gsea_CC <- list(
+  M_Steatosis        = load_gsea_CC(file.path(dfp,"Human_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  M_Steatohepatitis  = load_gsea_CC(file.path(dfp,"Human_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  M_Progression      = load_gsea_CC(file.path(dfp,"Human_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  M_Fibrosis         = load_gsea_CC(file.path(dfp,"Human_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  F_Steatosis        = load_gsea_CC(file.path(dfp,"Human_Female_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  F_Steatohepatitis  = load_gsea_CC(file.path(dfp,"Human_Female_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  F_Progression      = load_gsea_CC(file.path(dfp,"Human_Female_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  F_Fibrosis         = load_gsea_CC(file.path(dfp,"Human_Female_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES")
+)
+
+# MF
+human_gsea_MF <- list(
+  M_Steatosis        = load_gsea_MF(file.path(dfp,"Human_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  M_Steatohepatitis  = load_gsea_MF(file.path(dfp,"Human_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  M_Progression      = load_gsea_MF(file.path(dfp,"Human_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  M_Fibrosis         = load_gsea_MF(file.path(dfp,"Human_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  F_Steatosis        = load_gsea_MF(file.path(dfp,"Human_Female_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  F_Steatohepatitis  = load_gsea_MF(file.path(dfp,"Human_Female_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  F_Progression      = load_gsea_MF(file.path(dfp,"Human_Female_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  F_Fibrosis         = load_gsea_MF(file.path(dfp,"Human_Female_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES")
+)
+
+# KEGG
+human_gsea_K <- list(
+  M_Steatosis        = load_gsea_K(file.path(dfp,"Human_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  M_Steatohepatitis  = load_gsea_K(file.path(dfp,"Human_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  M_Progression      = load_gsea_K(file.path(dfp,"Human_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  M_Fibrosis         = load_gsea_K(file.path(dfp,"Human_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  F_Steatosis        = load_gsea_K(file.path(dfp,"Human_Female_Steatosis_Highly_Reproducible_Meta_DEGs.xlsx"),        nes_col="NES"),
+  F_Steatohepatitis  = load_gsea_K(file.path(dfp,"Human_Female_Steatohepatitis_Highly_Reproducible_Meta_DEGs.xlsx"),  nes_col="NES"),
+  F_Progression      = load_gsea_K(file.path(dfp,"Human_Female_Progression_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES"),
+  F_Fibrosis         = load_gsea_K(file.path(dfp,"Human_Female_FibrosisvF0_Highly_Reproducible_Meta_DEGs.xlsx"),      nes_col="NES")
+)
+
+# merge both
+gsea_results_BP <- c(mouse_gsea_BP, human_gsea_BP)
+gsea_results_CC <- c(mouse_gsea_CC, human_gsea_CC)
+gsea_results_MF <- c(mouse_gsea_MF, human_gsea_MF)
+gsea_results_K <- c(mouse_gsea_K, human_gsea_K)
+
+
+merge_nes <- function(gsea_list) {
+  reduce(imap(gsea_list, ~ dplyr::select(.x, ID, !!.y := NES)),
+         full_join, by = "ID") %>%
+    filter(!is.na(ID)) %>%
+    distinct(ID, .keep_all = TRUE) %>%
+    tibble::column_to_rownames("ID") %>%
+    as.matrix()
+}
+
+# pathways x metas
+nes_mat_BP <- merge_nes(gsea_results_BP)  
+nes_mat_CC <- merge_nes(gsea_results_CC)  
+nes_mat_MF <- merge_nes(gsea_results_MF)  
+nes_mat_K <- merge_nes(gsea_results_K)      
+
+nes_cor_BP <- cor(nes_mat_BP, use = "pairwise.complete.obs", method = "spearman")
+nes_cor_CC <- cor(nes_mat_CC, use = "pairwise.complete.obs", method = "spearman")
+nes_cor_MF <- cor(nes_mat_MF, use = "pairwise.complete.obs", method = "spearman")
+nes_cor_K <- cor(nes_mat_K, use = "pairwise.complete.obs", method = "spearman")
+
+print(round(nes_cor_BP, 2))
+print(round(nes_cor_CC, 2))
+print(round(nes_cor_MF, 2))
+print(round(nes_cor_K, 2))
+
+pheatmap(nes_cor_BP,
+         color = pal,
+         breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         fontsize_number = 14,
+         fontsize_row = 13,            
+         fontsize_col = 13,
+         number_color = "black",
+         cluster_rows = F,
+         cluster_cols = F,
+         main = "GSEA BP NES concordance across metas (Spearman)")
+
+pheatmap(nes_cor_CC,
+         color = pal,
+         breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         fontsize_number = 14,
+         fontsize_row = 13,            
+         fontsize_col = 13,
+         number_color = "black",
+         cluster_rows = F,
+         cluster_cols = F,
+         main = "GSEA CC NES concordance across metas (Spearman)")
+
+pheatmap(nes_cor_MF,
+         color = pal,
+         breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         fontsize_number = 14,
+         fontsize_row = 13,            
+         fontsize_col = 13,
+         number_color = "black",
+         cluster_rows = F,
+         cluster_cols = F,
+         main = "GSEA MF NES concordance across metas (Spearman)")
+
+
+pheatmap(nes_cor_K,
+         color = pal,
+         breaks = seq(-1,1,length.out=101),
+         display_numbers = TRUE, 
+         fontsize_number = 14,
+         fontsize_row = 13,            
+         fontsize_col = 13,
+         number_color = "black",
+         cluster_rows = F,
+         cluster_cols = F,
+         main = "GSEA KEGG NES concordance across metas (Spearman)")
+
+
+
+n_paths_BP <- crossprod(!is.na(nes_mat_BP))
+print(n_paths_BP)
+
+n_paths_CC <- crossprod(!is.na(nes_mat_CC))
+print(n_paths_CC)
+
+n_paths_MF <- crossprod(!is.na(nes_mat_MF))
+print(n_paths_MF)
+
+n_paths_K <- crossprod(!is.na(nes_mat_K))
+print(n_paths_K)
+
+# Venn/UpSet of significantly enriched pathways
+sig_paths_BP <- lapply(gsea_results_BP, function(g) g$ID[g$fdr < 0.05 & is.finite(g$fdr)])
+upset(fromList(sig_paths_BP), nsets = length(sig_paths_BP), order.by = "freq")
+
+sig_paths_CC <- lapply(gsea_results_CC, function(g) g$ID[g$fdr < 0.05 & is.finite(g$fdr)])
+upset(fromList(sig_paths_CC), nsets = length(sig_paths_CC), order.by = "freq")
+
+sig_paths_MF <- lapply(gsea_results_MF, function(g) g$ID[g$fdr < 0.05 & is.finite(g$fdr)])
+upset(fromList(sig_paths_MF), nsets = length(sig_paths_MF), order.by = "freq")
+
+sig_paths_K <- lapply(gsea_results_K, function(g) g$ID[g$fdr < 0.05 & is.finite(g$fdr)])
+upset(fromList(sig_paths_K), nsets = length(sig_paths_K), order.by = "freq")
+
+# AUTOMATIC EXPORT TO EXCEL 
+wb <- createWorkbook()
+addWorksheet(wb, "mouse_cor_matrix")
+addWorksheet(wb, "mouse_cor_DEG_matrix")
+addWorksheet(wb, "human_cor_matrix")
+addWorksheet(wb, "human_cor_DEG_matrix")
+addWorksheet(wb, "ortho_Allgene_matrix")
+addWorksheet(wb, "ortho_DEG_matrix")
+addWorksheet(wb, "ortho_Allgene_count_matrix")
+addWorksheet(wb, "ortho_DEG_count_matrix")
+addWorksheet(wb, "GSEA_BP_cor_matrix")
+addWorksheet(wb, "GSEA_CC_cor_matrix")
+addWorksheet(wb, "GSEA_MF_cor_matrix")
+addWorksheet(wb, "GSEA_KEGG_cor_matrix")
+addWorksheet(wb, "GSEA_BP_count_matrix")
+addWorksheet(wb, "GSEA_CC_count_matrix")
+addWorksheet(wb, "GSEA_MF_count_matrix")
+addWorksheet(wb, "GSEA_KEGG_count_matrix")
+
+
+# Write the clean filtered core signature to the tab
+writeData(wb, "mouse_cor_matrix",  mouse_cor)
+writeData(wb, "mouse_cor_DEG_matrix",    mouse_cor_DEG)
+writeData(wb, "human_cor_matrix",  human_cor)
+writeData(wb, "human_cor_DEG_matrix",  human_cor_DEG)
+writeData(wb, "ortho_Allgene_matrix",  combined_cor)
+writeData(wb, "ortho_DEG_matrix",    combined_cor_DEG)
+writeData(wb, "ortho_Allgene_count_matrix",  n_mat)
+writeData(wb, "ortho_DEG_count_matrix",  n_mat_DEG)
+writeData(wb, "GSEA_BP_cor_matrix",  nes_cor_BP)
+writeData(wb, "GSEA_CC_cor_matrix",  nes_cor_CC)
+writeData(wb, "GSEA_MF_cor_matrix",  nes_cor_MF)
+writeData(wb, "GSEA_KEGG_cor_matrix",  nes_cor_K)
+writeData(wb, "GSEA_BP_count_matrix",  n_paths_BP)
+writeData(wb, "GSEA_CC_count_matrix",  n_paths_CC)
+writeData(wb, "GSEA_MF_count_matrix",  n_paths_MF)
+writeData(wb, "GSEA_KEGG_count_matrix",  n_paths_K)
+
+
+# Save the workbook to your directory
+output_file <- file.path(dfp, "Ortholog_Concordance_Matrix.xlsx")
+saveWorkbook(wb, output_file, overwrite = TRUE)
+
+cat(paste0("\nFile successfully exported to: ", output_file, "\n"))
